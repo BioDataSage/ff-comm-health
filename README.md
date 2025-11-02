@@ -18,7 +18,8 @@ This repository contains a comprehensive data analysis for predicting Quality of
 
 ### Source
 
-The dataset is publicly available on Zenodo: - **DOI:** [10.5281/zenodo.17504866](https://doi.org/10.5281/zenodo.17504866), which was originally gotten from Kaggle  -
+The dataset is publicly available on Zenodo: - **DOI:** [10.5281/zenodo.17504866](https://doi.org/10.5281/zenodo.17504866), which was originally gotten from Kaggle
+
 **Citation:** [Community Health Team]. (2925). Community Health Evaluation Dataset. Zenodo. <https://doi.org/10.5281/zenodo.17504866>
 
 ### Dataset Characteristics
