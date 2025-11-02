@@ -31,10 +31,23 @@ Rdata <- saveRDS(data, "Rdata.rds")
 
 
 
-
+names(Rdata)
 
 
 
 # 
 #   group_by(STATE) |> 
 #   summarise(SVI = mean(RPL_THEMES))
+# 
+# ggplot(emg, aes(x = factor(cluster), y = factor(EMG.Activity), fill = percent)) +
+#   geom_tile(color = "white", width = 0.95, height = 0.95) +
+#   scale_fill_gradientn(colours = c("#002060", "#0070C0", "#00B0F0")) +
+#   theme_minimal() +
+#   labs(x = "Cluster", y = "EMG Activity", fill = "Percent")
+# 
+# 
+# 
+# class(emg$percent)
+# summary(emg$percent)
+# str(emg$percent)
+# unique(emg$percent)
