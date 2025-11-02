@@ -28,7 +28,7 @@ The dataset is publicly available on kaggle:
 ### Dataset Characteristics
 
 | Characteristic | Details |
-|---------------------------------------------|---------------------------|
+|----|----|
 | **Sample Size** | 347 participants |
 | **Age Range** | 18-69 years |
 | **Variables** | 12 features (demographics, clinical, biomechanical, outcomes) |
@@ -234,8 +234,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## 📧 Contact
 
--   **Authors:** [Your Name]
--   **Emaisl:** [your.email\@example.com](mailto:your.email@example.com){.email}
--   **Project Link:** <https://github.com/yourusername/community-health-evaluation>
+-   **Authors:** "[Derrick Nyarko](github.com/nyarderr), [Daniel Adediran](github.com/dexwel), [Alejandra Ramirez](github.com/Alejandra1599),[Julie Cha](github.com/jcha-hub), [Jiro Claveria](github.com/aljon-claveria)
+-   **Project Link:** <https://github.com/BioDataSage/ff-comm-health>
 
 ------------------------------------------------------------------------

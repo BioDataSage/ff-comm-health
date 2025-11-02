@@ -1,6 +1,6 @@
 ---
 title: "Community Health Evaluation: From Prediction to Explanation"
-author: "Team 1"
+authors: "Derrick Nyarko, Alejandra Ramirez, Jiro Claveria, Julie Cha, Chantanielle Clyde, Daniel Adediran 1"
 output:
   html_document:
     theme: default
