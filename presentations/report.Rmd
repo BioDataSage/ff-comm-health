@@ -16,6 +16,7 @@ output:
 
 # Introduction
 
+Assessing the impact of community health services on health outcomes. Understanding the relationship between biomechanical measures and health quality indicators. Evaluating patient satisfaction and quality of life in relation to healthcare services. Conducting statistical analyses to identify patterns and correlations within community health metrics
 
 ## 🎯 Objectives
 

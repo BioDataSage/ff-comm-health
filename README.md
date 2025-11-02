@@ -23,12 +23,12 @@ The result is a complete, data-driven story that moves from "What" is happening 
 
 ### Source
 
-The dataset is publicly available on kaggle:
+The dataset is publicly available on kaggle: [Link to dataset](https://www.kaggle.com/datasets/ziya07/community-health-evaluation-dataset?resource=download)
 
 ### Dataset Characteristics
 
 | Characteristic | Details |
-|----|----|
+|---------------------------------------------|---------------------------|
 | **Sample Size** | 347 participants |
 | **Age Range** | 18-69 years |
 | **Variables** | 12 features (demographics, clinical, biomechanical, outcomes) |
