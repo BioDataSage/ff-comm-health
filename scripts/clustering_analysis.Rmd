@@ -1,0 +1,442 @@
+---
+title: Patient Profile Cluster 
+output: html
+---
+
+## Preparing Data
+
+```{r, echo=FALSE}
+
+library(dplyr)
+library(tidyverse)
+
+
+
+Rdata <- readRDS(here::here("data/Rdata.rds"))
+
+## Converting categorical columns to factors
+Rdata$Gender <- as.factor(Rdata$Gender)
+Rdata$Service.Type <- as.factor(Rdata$Service.Type)
+Rdata$Visit.Frequency <- as.factor(Rdata$Visit.Frequency)
+Rdata$EMG.Activity <- as.factor(Rdata$EMG.Activity)
+
+
+
+# First part is preprocessing the data for our kmeans clustering
+
+# convert EMG categories to numeric
+data <- Rdata |> 
+  mutate(EMG.Activity = case_when(
+    EMG.Activity == "Low" ~ 1,
+    EMG.Activity == "Moderate" ~ 2,
+    EMG.Activity == "High" ~ 3
+  ))
+
+
+# We will be focusing on the 4 biomedical variables to cluster and model 
+cluster_data <- data |> 
+  select(Step.Frequency..steps.min.,Stride.Length..m.,Joint.Angle...., EMG.Activity) |> 
+  na.omit()
+
+
+
+## Scale the data for kmeans 
+scaled_cluster_data <- scale(cluster_data)
+
+```
+
+
+## Running the Kmeans model to generate a new data form grouped into clusters
+
+```{r}
+
+library(stats)
+library(ggplot2)
+library(tidyverse)
+
+
+# Finding best k with an elbow plot
+wss <- numeric(10)
+
+for (i in 1:10){
+  wss[i] <- kmeans(scaled_cluster_data, centers = i, nstart = 25)$tot.withins
+}
+
+plot_data <- data.frame(k=1:10, wss = wss)
+
+p1 <- plot_data |> 
+  ggplot(aes(x = (k), y = wss))+
+  scale_x_continuous(breaks = unique(plot_data$k)) +
+  geom_line(linewidth = 1.5, color="#FFE0E0")+
+  gghighlight::gghighlight(plot_data$k==3)+
+  geom_point(size=3.5, color="#E06666", shape = 21, fill="white",stroke = 2)+
+  theme_classic()+
+  labs(title = "Elbow plot to find out k (number of clusters)", x = "Number of clusters (k)")+
+  theme(panel.background = element_blank(),
+        text = element_text(family = "Century Gothic", face = "bold"),
+        axis.text = element_text(size = 13))
+        #,
+        #panel.grid.major.y = element_line(linewidth = .15, colour = "gray"))
+
+print(p1)
+
+
+## From the plot we get k = 3 , run final model
+
+set.seed(123)
+final_clusters <- kmeans(cluster_data, centers = 3, nstart = 25)
+
+## Add the clustered data to original dataset
+data$cluster <- as.factor(final_clusters$cluster)
+
+
+```
+
+## Manipulating clusters
+
+```{r}
+
+library(kableExtra)
+library(DT)
+
+
+cluster_identities_1 <- data |> 
+  group_by(cluster) |> 
+  summarise(
+    avg_step_freq = mean(Step.Frequency..steps.min.),
+    avg_stride = mean(Stride.Length..m.),
+    avg_joint = mean(Joint.Angle....)
+  )
+
+
+cluster_categorical_identity <- data |> 
+  group_by(cluster,EMG.Activity) |> 
+  summarise(count=n()) |> 
+  mutate(percent = count/sum(count)*100) |> 
+  mutate(EMG.Activity = case_when(
+    EMG.Activity == 1 ~ "Low",
+    EMG.Activity == 2 ~ "Moderate",
+    EMG.Activity == 3 ~ "High")) |> 
+  group_by(cluster,EMG.Activity) 
+
+cluster_identities_1 |> 
+  datatable()
+
+
+```
+
+```{r}
+
+cl_long <- cluster_identities_1 |> 
+  pivot_longer(-c(cluster),
+               names_to = "variables",
+               values_to = "value")
+  
+  
+p2 <- cl_long |>
+  ggplot(aes(x=cluster, y=value, fill=variables))+
+  geom_col(position = "dodge")+
+  scale_fill_manual(values = c("gray80","#27A0CC","gray80"),
+                    labels = c("avg_joint"="Joint Angle",
+                               "avg_step_freq"="Step Frequency (per min)",
+                               "avg_stride" = "Stride Length"))+
+  theme_classic()+
+  geom_text(aes(label = round(value,1), color = variables), position = position_dodge(width = 0.8), show.legend = FALSE,
+            vjust=-.5, family = "Century Gothic", fontface="bold")+
+  scale_color_manual(values = c("gray80","#27A0CC","gray80"))+
+  theme(
+    text = element_text(family = "Century Gothic", size = 12, face = "bold"),
+    axis.text.x = element_text(size = 13)
+  )+
+  labs(y="Average value")
+
+
+
+```
+
+## Analysis of clusters
+
+Our ML model classified the individuals in our sample into 3 clusters based on their biomechanics, results from the clustering shows that individuals have similar stride lenght and overall joint angle, these two does not extensively separate the individuals, on the other hand the number of steps taken varies across these clusters. cluster 1 and average of 66 steps/min, cluster 2 avg 78 steps/min and cluster 3 92 steps/min. To further classify then we will look at the EMG activity level for each cluster
+
+```{r}
+
+cluster_categorical_identity |> 
+  mutate(percent = paste0(round(percent,1),"%")) |> 
+  datatable()
+
+```
+
+Results from EMG Activity shows an interesting revelation, among all 3 clusters EMG Activity is scattered across all 3 classes, this tells us the way the patients walk (biomechanics) has no effect on them but rather how fast they walk. Based on this we will name them accrodingly - Cluster 1 (Avg 66 steps/min) : Slow walkers - Cluster 2 (Avg 78 steps/min) : Steady walkers - Cluster 3 (Avg 92 steps/min) : Fast walkers
+
+#### Analysis
+
+```{r}
+
+## cluster vs Quality of life score
+
+plot1 <- data |>
+  group_by(cluster) |>
+  summarise(avg_score = mean(Quality.of.Life.Score)) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers",
+    )) |> 
+  ggplot(aes(x = cluster, y = avg_score, fill = cluster))+
+  geom_col(width = 0.9)+
+  geom_text(aes(label = round(avg_score,2)),
+            family="Century Gothic",fontface="bold", size = 5, vjust=-.5)+
+  scale_fill_manual(values = c("#382873", "#0168C8", "#00B050"))+
+  scale_y_continuous(limits = c(0,100), expand = c(0,0))+
+  labs(x=NULL, y="Average Quality of Life Score")+
+  theme(
+    panel.background = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(size = 15, family = "Century Gothic", face = "bold"),
+    axis.text.y = element_text(size = 10, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 10, family = "Century Gothic", face = "bold"),
+    axis.line.x = element_line(colour = "black", linewidth = .5),
+    axis.line.y = element_line(colour = "black", linewidth = .5),
+  )
+
+```
+
+Age Groupungs across clusters
+
+
+```{r age, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 10, fig.height = 6}
+
+# plot1
+
+age_bins <- data |>
+  mutate(Age_class = case_when(
+    Age %in% c(18:24) ~ "Youth",
+    Age %in% c(25:64) ~ "Working Age",
+    Age %in% c(65:100) ~ "Older Persons"
+  )) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers",
+    ))
+
+## overview of the sample in terms of age class
+age_class <- age_bins |>
+  group_by(cluster,Age_class) |>
+  count() |>
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100)
+
+p3 <- age_class |>
+  ggplot(aes(x = cluster, y = n, fill = Age_class)) +
+  geom_col(width = 0.8)+
+  theme_classic()+
+  geom_text(aes(label = paste0(scales::number(percent,accuracy=.1),"%")),
+            position = position_stack(vjust = 0.5),size=5,
+            family="Century Gothic", color="white", fontface="bold")+
+  scale_fill_manual(values = c("Youth"="#E69F00","Older Persons"="#A67C52", "Working Age"="#009E73"))+
+  theme(text = element_text(family = "Century Gothic", face = "bold", size = 12),
+        axis.text = element_text(size = 13))+
+  labs(fill=NULL, y = "Number of Patients", x=NULL) #title = "Distribution of Patients by Age Groups")
+
+
+print(p3)
+
+```
+
+
+Patient satisfaction scores across clusters
+
+```{r p_satisfied,message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+## Patient satisfaction score by cluster
+
+
+plot2 <- data |>
+  group_by(cluster) |>
+  summarise(avg_score = mean(Patient.Satisfaction..1.10.)) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers",
+    )) |> 
+  ggplot(aes(x = cluster, y = avg_score, fill = cluster))+
+  geom_col(width = 0.9)+
+  geom_text(aes(label = round(avg_score,2)),
+            family="Century Gothic",fontface="bold", size = 7, vjust=-.5)+
+  scale_fill_manual(values = c("#382873", "#0168C8", "#00B050"))+
+  scale_y_continuous(limits = c(0,10), expand = c(0,0))+
+  labs(x=NULL, y="Average Satisfaction Score")+
+  theme(
+    panel.background = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(size = 18, family = "Century Gothic", face = "bold"),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.line.x = element_line(colour = "black", linewidth = .5),
+    axis.line.y = element_line(colour = "black", linewidth = .5),
+  )
+
+print(plot2)
+
+```
+
+
+Frequency of visit to Healthcare facilities
+
+```{r visit_frequency, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+## visit freqiency by cluster plot
+v_f <- data |> 
+  group_by(cluster, Visit.Frequency) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"),
+    Visit.Frequency = factor(Visit.Frequency, levels = c("Weekly","Monthly","Yearly"))
+    )
+
+plot3 <- v_f |> 
+  ggplot(aes(x = cluster, y = percent, fill = Visit.Frequency))+
+  geom_col(width = 0.9)+
+  geom_vline(xintercept = c(0.5,1.5,2.5,3.5), linewidth=.3, color="gray")+
+  geom_text(aes(label = round(percent,1)), position = position_stack(vjust = .5),
+          family="Century Gothic",fontface="bold", size = 5, vjust=-.5, color="white")+
+  scale_fill_manual(values = c("#14607A","#07BB9E","#F98B00")) +
+  theme(text = element_text(family = "Century Gothic", face = "bold"),
+    panel.background = element_blank(),
+    legend.position = "right",
+    axis.text.x = element_text(size = 13, family = "Century Gothic", face = "bold", vjust = 6),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold")
+    # axis.line.x = element_line(colour = "black", linewidth = .5),
+    # axis.line.y = element_line(colour = "black", linewidth = .5),
+  )+
+  labs(x=NULL)
+  #coord_flip(clip = "off")
+print(plot3)
+
+```
+
+
+Socioeconomic Status across clusters
+
+
+```{r ses, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+
+## Socio economic status by cluster
+ses <- data |> 
+  group_by(cluster, SES) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"),
+    SES = factor(SES, levels = c(1,2,3,4))
+    )
+
+plot3 <- ses |> 
+  ggplot(aes(x = cluster, y = percent, fill = SES))+
+  geom_col(width = 0.9)+
+  geom_vline(xintercept = c(0.5,1.5,2.5,3.5), linewidth=.3, color="gray")+
+  geom_text(aes(label = paste0(round(percent,1),"%")), position = position_stack(vjust = .5),
+          family="Century Gothic",fontface="bold", size = 5, vjust=-.5, color="white")+
+  scale_fill_manual(values = c("#210D69", "#DB2E76", "#586889", "#227C42")) +
+  theme(text = element_text(family = "Century Gothic", face = "bold"),
+    panel.background = element_blank(),
+    legend.position = "right",
+    axis.text.x = element_text(size = 13, family = "Century Gothic", face = "bold", vjust = 6),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold")
+    # axis.line.x = element_line(colour = "black", linewidth = .5),
+    # axis.line.y = element_line(colour = "black", linewidth = .5),
+  )+
+  labs(x=NULL)
+  #coord_flip(clip = "off")
+
+
+```
+
+
+Service type by Cluster
+
+
+```{r service, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+## service type by clusters
+
+service <- data |> 
+  group_by(cluster, Service.Type) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"),
+    #SES = factor(SES, levels = c(1,2,3,4))
+    )
+
+plot4 <- service |> 
+  ggplot(aes(x = cluster, y = percent, fill =Service.Type))+
+  geom_col(width = 0.9)+
+  geom_vline(xintercept = c(0.5,1.5,2.5,3.5), linewidth=.3, color="gray")+
+  geom_text(aes(label = paste0(round(percent,1),"%")), position = position_stack(vjust = .5),
+          family="Century Gothic",fontface="bold", size = 5, color="white")+
+  scale_fill_manual(values = c("#800201","#febf02","#05205f")) +
+  theme(text = element_text(family = "Century Gothic", face = "bold", colour = "black"),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    #plot.background = element_rect(fill = "black"), 
+    plot.background = element_blank(),
+    legend.position = "right",
+    legend.background = element_blank(),
+    axis.text.x = element_text(size = 13, family = "Century Gothic", face = "bold", vjust = 6, colour = "black"),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold", colour = "black"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold")
+    # axis.line.x = element_line(colour = "black", linewidth = .5),
+    # axis.line.y = element_line(colour = "black", linewidth = .5),
+  )+
+  labs(x=NULL)+
+  coord_flip(clip = "off")
+
+#ggsave("service.png",plot4, width = 10,height = 6, dpi = 300, device = grDevices::png)
+
+print(plot4)
+
+```
+
+## EMG Activity level for each cluster
+
+```{r}
+emg <- cluster_categorical_identity |> 
+   mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"))
+
+emg$percent <- as.numeric(emg$percent)
+
+plot5 <- ggplot(emg, aes(x = factor(cluster), y = factor(EMG.Activity), fill = percent)) +
+  geom_tile(color = "white", width = 0.95, height = 0.95) +
+  scale_fill_gradientn(colours = rev(neutral_color_scheme)) +
+  geom_text(aes(label = paste0(round(percent,1),"%"),family = "Century Gothic", fontface = "bold",
+                color = ifelse((EMG.Activity == "Low" & cluster == "Slow Walkers") | (cluster == "Steady Walkers" & EMG.Activity == "Moderate"),"black","white")), show.legend = F)+
+  scale_color_manual(values = c("white","black"))+
+  theme_minimal() +
+  theme(text = element_text(family = "Century Gothic", face = "bold"))+
+  labs(x = "Cluster", y = "EMG Activity", fill = "Percent")
+
+
+print(plot5)
+
+```

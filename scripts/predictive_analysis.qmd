@@ -1,0 +1,474 @@
+---
+title: "Community Health Evaluation Data Analysis"
+subtitle: "Comprehensive Statistical Analysis and Modeling"
+author: "Community Health and Opportunity Group"
+format: 
+  revealjs:
+    theme: moon
+    transition: slide
+    slide-number: true
+    chalkboard: true
+    code-fold: true
+    code-summary: "Show code"
+execute:
+  warning: false
+  message: false
+---
+
+## Introduction {.smaller}
+
+**Objective:** Analyze community health evaluation data to understand:
+
+-   Patient demographics and service utilization
+-   Biomechanical measurements and their relationships
+-   Factors affecting patient satisfaction and quality of life
+-   Predictive modeling for health outcomes
+
+**Dataset:** 347 participants with 12 variables including demographics, service types, biomechanical measures, and outcomes.
+
+------------------------------------------------------------------------
+
+## Data Import and Preprocessing
+
+```{r setup}
+# Load required libraries
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(plotly)
+library(GGally)
+
+# Import data
+data <- readRDS(here::here("data/Rdata.rds"))
+
+# Display structure
+str(data)
+```
+
+------------------------------------------------------------------------
+
+## Data Cleaning {.smaller}
+
+```{r cleaning}
+# Convert categorical variables to factors
+data <- data %>%
+  mutate(
+    Gender = as.factor(Gender),
+    SES = as.factor(SES),
+    Service.Type = as.factor(Service.Type),
+    Visit.Frequency = as.factor(Visit.Frequency),
+    EMG.Activity = as.factor(EMG.Activity)
+  )
+
+# Check for missing values
+missing_summary <- data %>%
+  summarise(across(everything(), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing_Count")
+
+kable(missing_summary, caption = "Missing Values Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+------------------------------------------------------------------------
+
+## Descriptive Statistics {.smaller}
+
+```{r descriptive}
+# Summary statistics for continuous variables
+continuous_vars <- data %>% 
+  select(Age, Step.Frequency..steps.min., Stride.Length..m., 
+         Joint.Angle...., Patient.Satisfaction..1.10., Quality.of.Life.Score)
+
+summary_stats <- data.frame(
+  Variable = names(continuous_vars),
+  Mean = sapply(continuous_vars, mean, na.rm = TRUE),
+  SD = sapply(continuous_vars, sd, na.rm = TRUE),
+  Min = sapply(continuous_vars, min, na.rm = TRUE),
+  Max = sapply(continuous_vars, max, na.rm = TRUE),
+  Median = sapply(continuous_vars, median, na.rm = TRUE)
+)
+
+kable(summary_stats, digits = 2, 
+      caption = "Descriptive Statistics for Continuous Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+------------------------------------------------------------------------
+
+## Demographic Distribution
+
+```{r demographics, fig.width=10, fig.height=6}
+# Age distribution by gender
+p1 <- ggplot(data, aes(x = Age, fill = Gender)) +
+  geom_histogram(bins = 30, alpha = 0.7, position = "identity") +
+  theme_minimal() +
+  labs(title = "Age Distribution by Gender", x = "Age", y = "Frequency") +
+  scale_fill_brewer(palette = "Set2")
+
+# SES distribution
+p2 <- ggplot(data, aes(x = SES, fill = SES)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(title = "Socioeconomic Status Distribution", x = "SES Level", y = "Frequency") +
+  scale_fill_brewer(palette = "Set1")
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+------------------------------------------------------------------------
+
+## Service Utilization {.smaller}
+
+```{r services, fig.width=10, fig.height=6}
+# Service type by visit frequency
+service_visit <- data %>%
+  group_by(Service.Type, Visit.Frequency) %>%
+  summarise(Count = n(), .groups = "drop")
+
+ggplot(service_visit, aes(x = Service.Type, y = Count, fill = Visit.Frequency)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Service Type by Visit Frequency",
+       x = "Service Type", y = "Frequency", fill = "Visit Frequency") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+------------------------------------------------------------------------
+
+## Biomechanical Measures Overview
+
+```{r biomech, fig.width=10, fig.height=6}
+# Step frequency vs stride length
+ggplot(data, aes(x = Step.Frequency..steps.min., y = Stride.Length..m., 
+                 color = EMG.Activity)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Step Frequency vs Stride Length by EMG Activity",
+       x = "Step Frequency (steps/min)", y = "Stride Length (m)",
+       color = "EMG Activity") +
+  scale_color_brewer(palette = "Dark2")
+```
+
+------------------------------------------------------------------------
+
+## Patient Satisfaction Analysis
+
+```{r satisfaction, fig.width=10, fig.height=6}
+# Satisfaction by service type
+ggplot(data, aes(x = Service.Type, y = Patient.Satisfaction..1.10., 
+                 fill = Service.Type)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Patient Satisfaction by Service Type",
+       x = "Service Type", y = "Patient Satisfaction (1-10)") +
+  scale_fill_brewer(palette = "Pastel1") +
+  theme(legend.position = "none")
+```
+
+------------------------------------------------------------------------
+
+## Quality of Life Analysis
+
+```{r qol, fig.width=10, fig.height=6}
+# QoL by age groups and gender
+data_age_groups <- data %>%
+  mutate(Age_Group = cut(Age, breaks = c(0, 30, 45, 60, 100),
+                         labels = c("18-30", "31-45", "46-60", "60+")))
+
+ggplot(data_age_groups, aes(x = Age_Group, y = Quality.of.Life.Score, 
+                            fill = Gender)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Quality of Life Score by Age Group and Gender",
+       x = "Age Group", y = "Quality of Life Score") +
+  scale_fill_brewer(palette = "Set2")
+```
+
+------------------------------------------------------------------------
+
+## Correlation Analysis {.smaller}
+
+```{r correlation, fig.width=9, fig.height=7}
+# Select numeric variables for correlation
+numeric_data <- data %>%
+  select(Age, Step.Frequency..steps.min., Stride.Length..m., 
+         Joint.Angle...., Patient.Satisfaction..1.10., 
+         Quality.of.Life.Score)
+
+# Compute correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot correlation matrix
+corrplot(cor_matrix, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45,
+         addCoef.col = "black", number.cex = 0.7,
+         title = "Correlation Matrix of Continuous Variables",
+         mar = c(0,0,2,0))
+```
+
+------------------------------------------------------------------------
+
+## EMG Activity Patterns
+
+```{r emg, fig.width=10, fig.height=6}
+# EMG activity distribution across service types
+emg_service <- data %>%
+  group_by(Service.Type, EMG.Activity) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(Service.Type) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(emg_service, aes(x = Service.Type, y = Percentage, fill = EMG.Activity)) +
+  geom_bar(stat = "identity", position = "fill") +
+  theme_minimal() +
+  labs(title = "EMG Activity Distribution by Service Type",
+       x = "Service Type", y = "Proportion", fill = "EMG Activity") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "YlOrRd")
+```
+
+------------------------------------------------------------------------
+
+## Key Insights: Satisfaction Factors {.smaller}
+
+```{r satisfaction_factors, fig.width=10, fig.height=6}
+# Satisfaction by EMG activity and visit frequency
+ggplot(data, aes(x = Visit.Frequency, y = Patient.Satisfaction..1.10., 
+                 fill = EMG.Activity)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Patient Satisfaction by Visit Frequency and EMG Activity",
+       x = "Visit Frequency", y = "Patient Satisfaction (1-10)",
+       fill = "EMG Activity") +
+  scale_fill_brewer(palette = "Set3")
+```
+
+------------------------------------------------------------------------
+
+## Predictive Modeling: Data Preparation
+
+```{r model_prep}
+# Prepare data for modeling
+set.seed(123)
+
+# Create training and testing sets
+trainIndex <- createDataPartition(data$Quality.of.Life.Score, 
+                                  p = 0.8, list = FALSE)
+train_data <- data[trainIndex, ]
+test_data <- data[-trainIndex, ]
+
+# Display split
+cat("Training set size:", nrow(train_data), "\n")
+cat("Testing set size:", nrow(test_data), "\n")
+```
+
+------------------------------------------------------------------------
+
+## Linear Regression Model {.smaller}
+
+```{r linear_model}
+# Build linear regression model for Quality of Life
+lm_model <- lm(Quality.of.Life.Score ~ Age + Gender + SES + Service.Type + 
+                 Visit.Frequency + Step.Frequency..steps.min. + 
+                 Stride.Length..m. + Joint.Angle.... + EMG.Activity + 
+                 Patient.Satisfaction..1.10., 
+               data = train_data)
+
+# Model summary
+summary_lm <- summary(lm_model)
+cat("R-squared:", round(summary_lm$r.squared, 4), "\n")
+cat("Adjusted R-squared:", round(summary_lm$adj.r.squared, 4), "\n")
+cat("RMSE:", round(sqrt(mean(lm_model$residuals^2)), 4), "\n")
+```
+
+------------------------------------------------------------------------
+
+## Model Coefficients {.smaller}
+
+```{r coefficients}
+# Extract and display significant coefficients
+coef_df <- as.data.frame(summary_lm$coefficients)
+coef_df$Variable <- rownames(coef_df)
+coef_df <- coef_df %>%
+  filter(`Pr(>|t|)` < 0.05) %>%
+  arrange(`Pr(>|t|)`) %>%
+  select(Variable, Estimate, `Std. Error`, `t value`, `Pr(>|t|)`)
+
+kable(coef_df, digits = 4, 
+      caption = "Significant Predictors (p < 0.05)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+------------------------------------------------------------------------
+
+## Random Forest Model
+
+```{r random_forest}
+# Build random forest model
+set.seed(123)
+rf_model <- randomForest(Quality.of.Life.Score ~ Age + Gender + SES + 
+                           Service.Type + Visit.Frequency + 
+                           Step.Frequency..steps.min. + Stride.Length..m. + 
+                           Joint.Angle.... + EMG.Activity + 
+                           Patient.Satisfaction..1.10.,
+                         data = train_data, 
+                         ntree = 500, 
+                         importance = TRUE)
+
+# Model performance
+cat("Random Forest Model Performance:\n")
+cat("OOB R-squared:", round(1 - (rf_model$mse[500] / var(train_data$Quality.of.Life.Score)), 4), "\n")
+```
+
+------------------------------------------------------------------------
+
+## Feature Importance
+
+```{r feature_importance, fig.width=10, fig.height=6}
+# Variable importance
+importance_df <- as.data.frame(importance(rf_model))
+importance_df$Variable <- rownames(importance_df)
+
+ggplot(importance_df, aes(x = reorder(Variable, `%IncMSE`), y = `%IncMSE`)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Variable Importance in Random Forest Model",
+       x = "Variable", y = "% Increase in MSE")
+```
+
+------------------------------------------------------------------------
+
+## Model Comparison
+
+```{r model_comparison}
+# Predictions on test set
+lm_pred <- predict(lm_model, newdata = test_data)
+rf_pred <- predict(rf_model, newdata = test_data)
+
+# Calculate metrics
+lm_rmse <- sqrt(mean((test_data$Quality.of.Life.Score - lm_pred)^2))
+rf_rmse <- sqrt(mean((test_data$Quality.of.Life.Score - rf_pred)^2))
+
+lm_mae <- mean(abs(test_data$Quality.of.Life.Score - lm_pred))
+rf_mae <- mean(abs(test_data$Quality.of.Life.Score - rf_pred))
+
+# Create comparison table
+comparison <- data.frame(
+  Model = c("Linear Regression", "Random Forest"),
+  RMSE = c(lm_rmse, rf_rmse),
+  MAE = c(lm_mae, rf_mae)
+)
+
+kable(comparison, digits = 4, 
+      caption = "Model Performance Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+------------------------------------------------------------------------
+
+## Actual vs Predicted (Linear Model)
+
+```{r lm_predictions, fig.width=10, fig.height=6}
+pred_df_lm <- data.frame(
+  Actual = test_data$Quality.of.Life.Score,
+  Predicted = lm_pred
+)
+
+ggplot(pred_df_lm, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Linear Regression: Actual vs Predicted Quality of Life",
+       x = "Actual Quality of Life Score", y = "Predicted Quality of Life Score")
+```
+
+------------------------------------------------------------------------
+
+## Actual vs Predicted (Random Forest)
+
+```{r rf_predictions, fig.width=10, fig.height=6}
+pred_df_rf <- data.frame(
+  Actual = test_data$Quality.of.Life.Score,
+  Predicted = rf_pred
+)
+
+ggplot(pred_df_rf, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Random Forest: Actual vs Predicted Quality of Life",
+       x = "Actual Quality of Life Score", y = "Predicted Quality of Life Score")
+```
+
+------------------------------------------------------------------------
+
+## Key Findings {.smaller}
+
+**Demographics & Utilization:**
+
+-   Diverse age distribution (18-69 years) with balanced gender representation
+-   Rehabilitation services most commonly used, followed by consultations
+-   Visit frequency varies significantly across service types
+
+**Biomechanical Patterns:**
+
+-   Step frequency ranges from 60-99 steps/min with moderate variability
+-   Stride length shows positive correlation with step frequency
+-   EMG activity levels distributed across service types
+
+------------------------------------------------------------------------
+
+## Key Findings (cont.) {.smaller}
+
+**Patient Outcomes:**
+
+-   Patient satisfaction varies by service type and visit frequency
+-   Quality of life scores range widely (50-99)
+-   Age and service type are significant predictors of outcomes
+
+**Predictive Models:**
+
+-   Random Forest outperforms Linear Regression (lower RMSE and MAE)
+-   Patient satisfaction is the strongest predictor of quality of life
+-   Biomechanical measures have moderate predictive power
+
+------------------------------------------------------------------------
+
+## Recommendations {.smaller}
+
+1.  **Service Optimization:**
+    -   Focus on improving satisfaction in lower-rated service types
+    -   Consider personalized visit frequency based on patient profiles
+2.  **Intervention Targeting:**
+    -   Prioritize patients with low EMG activity for additional support
+    -   Develop age-specific intervention programs
+3.  **Monitoring:**
+    -   Track biomechanical measures as early indicators of outcomes
+    -   Implement regular satisfaction assessments
+4.  **Future Research:**
+    -   Longitudinal analysis to track patient progress over time
+    -   Investigate interaction effects between variables
+
+------------------------------------------------------------------------
+
+## Conclusions
+
+-   **Comprehensive dataset** provides valuable insights into community health
+-   **Multiple factors** influence patient outcomes, with satisfaction being paramount
+-   **Predictive modeling** enables proactive intervention strategies
+-   **Data-driven approach** supports evidence-based healthcare decisions
+
+**Next Steps:** Implement recommendations and continue monitoring to validate findings and refine interventions.
+
+------------------------------------------------------------------------
+
+## Thank You! {.center}
+
+Data Analysis completed using R with tidyverse, caret, and randomForest packages.

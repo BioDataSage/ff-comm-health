@@ -1,0 +1,887 @@
+---
+title: "Community Health Evaluation: From Prediction to Explanation"
+author: "Team 1"
+output:
+  html_document:
+    theme: default
+    code_folding: hide
+    code_summary: "Show the code"
+    toc: true
+    toc_float: true
+    css:
+      - styles.css
+      - lightable.css
+---
+
+
+# Introduction
+
+
+## 🎯 Objectives
+
+-   **Predict Quality of Life scores** using patient demographics, biomechanical measures, and service utilization patterns
+-   **Discover hidden patient profiles** ("Slow," "Steady," and "Fast Walkers") using unsupervised k-Means clustering.
+-   **Identify key determinants** of patient satisfaction and health outcomes
+-   **Explain the "Frustration Gap** we found in Patient Satisfaction for the "Steady Walker" profile.
+-   **Explain Identify a critical "Rehab Gap** as the root cause of this frustration.
+-   **Compare machine learning models** (Linear Regression vs Random Forest) for predictive accuracy
+-   **Provide interactive tools** for healthcare professionals to explore patient data and generate predictions
+-   **Generate evidence-based recommendations** for intervention strategies and program optimization
+
+**Dataset:** 347 participants with 12 variables including demographics, service types, biomechanical measures, and outcomes.
+
+
+## Data Preprocessing
+
+```{r setup,warning=FALSE, message=FALSE}
+# Load required libraries
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(corrplot)
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(plotly)
+library(GGally)
+
+
+
+neutral_color_scheme <- c("#002060", "#0070C0", "#00B0F0", "#8EA9DB", "#9BC2E6", "#FFFFCC")
+
+# Import data
+data <- readRDS(here::here("data/Rdata.rds"))
+
+# Display structure
+str(data)
+```
+
+
+## Data Cleaning
+
+```{r cleaning,warning=FALSE, message=FALSE}
+# Convert categorical variables to factors
+data <- data %>%
+  mutate(
+    Gender = as.factor(Gender),
+    SES = as.factor(SES),
+    Service.Type = as.factor(Service.Type),
+    Visit.Frequency = as.factor(Visit.Frequency),
+    EMG.Activity = as.factor(EMG.Activity)
+  )
+
+# Check for missing values
+missing_summary <- data %>%
+  summarise(across(everything(), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing_Count")
+
+kable(missing_summary, caption = "Missing Values Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+## Descriptive Statistics {.smaller}
+
+```{r descriptive,warning=FALSE, message=FALSE}
+# Summary statistics for continuous variables
+continuous_vars <- data %>% 
+  select(Age, Step.Frequency..steps.min., Stride.Length..m., 
+         Joint.Angle...., Patient.Satisfaction..1.10., Quality.of.Life.Score)
+
+summary_stats <- data.frame(
+  Variable = names(continuous_vars),
+  Mean = sapply(continuous_vars, mean, na.rm = TRUE),
+  SD = sapply(continuous_vars, sd, na.rm = TRUE),
+  Min = sapply(continuous_vars, min, na.rm = TRUE),
+  Max = sapply(continuous_vars, max, na.rm = TRUE),
+  Median = sapply(continuous_vars, median, na.rm = TRUE)
+)
+
+kable(summary_stats, digits = 2, 
+      caption = "Descriptive Statistics for Continuous Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+## Demographic Distribution
+
+```{r demographics, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# Age distribution by gender
+p1 <- ggplot(data, aes(x = Age, fill = Gender)) +
+  geom_histogram(bins = 30, alpha = 0.7, position = "identity") +
+  theme_minimal() +
+  labs(title = "Age Distribution by Gender", x = "Age", y = "Frequency") +
+  scale_fill_brewer(palette = "Set2")
+
+# SES distribution
+p2 <- ggplot(data, aes(x = SES, fill = SES)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(title = "Socioeconomic Status Distribution", x = "SES Level", y = "Frequency") +
+  scale_fill_brewer(palette = "Set1")
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+
+## Service Utilization {.smaller}
+
+```{r services, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# Service type by visit frequency
+service_visit <- data %>%
+  group_by(Service.Type, Visit.Frequency) %>%
+  summarise(Count = n(), .groups = "drop")
+
+ggplot(service_visit, aes(x = Service.Type, y = Count, fill = Visit.Frequency)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Service Type by Visit Frequency",
+       x = "Service Type", y = "Frequency", fill = "Visit Frequency") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+## Biomechanical Measures Overview
+
+```{r biomech, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# Step frequency vs stride length
+ggplot(data, aes(x = Step.Frequency..steps.min., y = Stride.Length..m., 
+                 color = EMG.Activity)) +
+  geom_point(alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Step Frequency vs Stride Length by EMG Activity",
+       x = "Step Frequency (steps/min)", y = "Stride Length (m)",
+       color = "EMG Activity") +
+  scale_color_brewer(palette = "Dark2")
+```
+
+
+## Patient Satisfaction Analysis
+
+```{r satisfaction, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# Satisfaction by service type
+ggplot(data, aes(x = Service.Type, y = Patient.Satisfaction..1.10., 
+                 fill = Service.Type)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Patient Satisfaction by Service Type",
+       x = "Service Type", y = "Patient Satisfaction (1-10)") +
+  scale_fill_brewer(palette = "Pastel1") +
+  theme(legend.position = "none")
+```
+
+## Quality of Life Analysis
+
+```{r qol, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# QoL by age groups and gender
+data_age_groups <- data %>%
+  mutate(Age_Group = cut(Age, breaks = c(0, 30, 45, 60, 100),
+                         labels = c("18-30", "31-45", "46-60", "60+")))
+
+ggplot(data_age_groups, aes(x = Age_Group, y = Quality.of.Life.Score, 
+                            fill = Gender)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Quality of Life Score by Age Group and Gender",
+       x = "Age Group", y = "Quality of Life Score") +
+  scale_fill_brewer(palette = "Set2")
+```
+
+
+## Correlation Analysis {.smaller}
+
+```{r correlation, fig.width=9, fig.height=7,warning=FALSE, message=FALSE}
+# Select numeric variables for correlation
+numeric_data <- data %>%
+  select(Age, Step.Frequency..steps.min., Stride.Length..m., 
+         Joint.Angle...., Patient.Satisfaction..1.10., 
+         Quality.of.Life.Score)
+
+# Compute correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot correlation matrix
+corrplot(cor_matrix, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45,
+         addCoef.col = "black", number.cex = 0.7,
+         title = "Correlation Matrix of Continuous Variables",
+         mar = c(0,0,2,0))
+```
+
+
+## EMG Activity Patterns
+
+```{r emg, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# EMG activity distribution across service types
+emg_service <- data %>%
+  group_by(Service.Type, EMG.Activity) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(Service.Type) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+ggplot(emg_service, aes(x = Service.Type, y = Percentage, fill = EMG.Activity)) +
+  geom_bar(stat = "identity", position = "fill") +
+  theme_minimal() +
+  labs(title = "EMG Activity Distribution by Service Type",
+       x = "Service Type", y = "Proportion", fill = "EMG Activity") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "YlOrRd")
+```
+
+
+
+## Key Insights: Satisfaction Factors {.smaller}
+
+```{r satisfaction_factors, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# Satisfaction by EMG activity and visit frequency
+ggplot(data, aes(x = Visit.Frequency, y = Patient.Satisfaction..1.10., 
+                 fill = EMG.Activity)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Patient Satisfaction by Visit Frequency and EMG Activity",
+       x = "Visit Frequency", y = "Patient Satisfaction (1-10)",
+       fill = "EMG Activity") +
+  scale_fill_brewer(palette = "Set3")
+```
+
+
+
+# Predictive Modeling
+
+## Data Preparation
+```{r model_prep,warning=FALSE, message=FALSE}
+# Prepare data for modeling
+set.seed(123)
+
+# Create training and testing sets
+trainIndex <- createDataPartition(data$Quality.of.Life.Score, 
+                                  p = 0.8, list = FALSE)
+train_data <- data[trainIndex, ]
+test_data <- data[-trainIndex, ]
+
+# Display split
+cat("Training set size:", nrow(train_data), "\n")
+cat("Testing set size:", nrow(test_data), "\n")
+```
+
+
+## Linear Regression Model {.smaller}
+
+```{r linear_model,warning=FALSE, message=FALSE}
+# Build linear regression model for Quality of Life
+lm_model <- lm(Quality.of.Life.Score ~ Age + Gender + SES + Service.Type + 
+                 Visit.Frequency + Step.Frequency..steps.min. + 
+                 Stride.Length..m. + Joint.Angle.... + EMG.Activity + 
+                 Patient.Satisfaction..1.10., 
+               data = train_data)
+
+# Model summary
+summary_lm <- summary(lm_model)
+cat("R-squared:", round(summary_lm$r.squared, 4), "\n")
+cat("Adjusted R-squared:", round(summary_lm$adj.r.squared, 4), "\n")
+cat("RMSE:", round(sqrt(mean(lm_model$residuals^2)), 4), "\n")
+```
+
+
+## Model Coefficients {.smaller}
+
+```{r coefficients,warning=FALSE, message=FALSE}
+# Extract and display significant coefficients
+coef_df <- as.data.frame(summary_lm$coefficients)
+coef_df$Variable <- rownames(coef_df)
+coef_df <- coef_df %>%
+  filter(`Pr(>|t|)` < 0.05) %>%
+  arrange(`Pr(>|t|)`) %>%
+  select(Variable, Estimate, `Std. Error`, `t value`, `Pr(>|t|)`)
+
+kable(coef_df, digits = 4, 
+      caption = "Significant Predictors (p < 0.05)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+## Random Forest Model
+
+```{r random_forest,warning=FALSE, message=FALSE}
+# Build random forest model
+set.seed(123)
+rf_model <- randomForest(Quality.of.Life.Score ~ Age + Gender + SES + 
+                           Service.Type + Visit.Frequency + 
+                           Step.Frequency..steps.min. + Stride.Length..m. + 
+                           Joint.Angle.... + EMG.Activity + 
+                           Patient.Satisfaction..1.10.,
+                         data = train_data, 
+                         ntree = 500, 
+                         importance = TRUE)
+
+# Model performance
+cat("Random Forest Model Performance:\n")
+cat("OOB R-squared:", round(1 - (rf_model$mse[500] / var(train_data$Quality.of.Life.Score)), 4), "\n")
+```
+
+
+## Feature Importance
+
+```{r feature_importance, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+# Variable importance
+importance_df <- as.data.frame(importance(rf_model))
+importance_df$Variable <- rownames(importance_df)
+
+ggplot(importance_df, aes(x = reorder(Variable, `%IncMSE`), y = `%IncMSE`)) +
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Variable Importance in Random Forest Model",
+       x = "Variable", y = "% Increase in MSE")
+```
+
+
+## Model Comparison
+
+```{r model_comparison,warning=FALSE, message=FALSE}
+# Predictions on test set
+lm_pred <- predict(lm_model, newdata = test_data)
+rf_pred <- predict(rf_model, newdata = test_data)
+
+# Calculate metrics
+lm_rmse <- sqrt(mean((test_data$Quality.of.Life.Score - lm_pred)^2))
+rf_rmse <- sqrt(mean((test_data$Quality.of.Life.Score - rf_pred)^2))
+
+lm_mae <- mean(abs(test_data$Quality.of.Life.Score - lm_pred))
+rf_mae <- mean(abs(test_data$Quality.of.Life.Score - rf_pred))
+
+# Create comparison table
+comparison <- data.frame(
+  Model = c("Linear Regression", "Random Forest"),
+  RMSE = c(lm_rmse, rf_rmse),
+  MAE = c(lm_mae, rf_mae)
+)
+
+kable(comparison, digits = 4, 
+      caption = "Model Performance Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+## Actual vs Predicted (Linear Model)
+
+```{r lm_predictions, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+pred_df_lm <- data.frame(
+  Actual = test_data$Quality.of.Life.Score,
+  Predicted = lm_pred
+)
+
+ggplot(pred_df_lm, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Linear Regression: Actual vs Predicted Quality of Life",
+       x = "Actual Quality of Life Score", y = "Predicted Quality of Life Score")
+```
+
+
+
+## Actual vs Predicted (Random Forest)
+
+```{r rf_predictions, fig.width=10, fig.height=6,warning=FALSE, message=FALSE}
+pred_df_rf <- data.frame(
+  Actual = test_data$Quality.of.Life.Score,
+  Predicted = rf_pred
+)
+
+ggplot(pred_df_rf, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Random Forest: Actual vs Predicted Quality of Life",
+       x = "Actual Quality of Life Score", y = "Predicted Quality of Life Score")
+```
+
+
+
+# Clustering Model
+
+## Data Preparation
+
+```{r dprep, warning=FALSE, message=FALSE}
+
+library(dplyr)
+library(tidyverse)
+
+Rdata <- readRDS(here::here("data/Rdata.rds"))
+
+## Converting categorical columns to factors
+Rdata$Gender <- as.factor(Rdata$Gender)
+Rdata$Service.Type <- as.factor(Rdata$Service.Type)
+Rdata$Visit.Frequency <- as.factor(Rdata$Visit.Frequency)
+Rdata$EMG.Activity <- as.factor(Rdata$EMG.Activity)
+
+
+
+# First part is preprocessing the data for our kmeans clustering
+
+# convert EMG categories to numeric
+data <- Rdata |> 
+  mutate(EMG.Activity = case_when(
+    EMG.Activity == "Low" ~ 1,
+    EMG.Activity == "Moderate" ~ 2,
+    EMG.Activity == "High" ~ 3
+  ))
+
+
+# We will be focusing on the 4 biomedical variables to cluster and model 
+cluster_data <- data |> 
+  select(Step.Frequency..steps.min.,Stride.Length..m.,Joint.Angle...., EMG.Activity) |> 
+  na.omit()
+
+
+
+## Scale the data for kmeans 
+scaled_cluster_data <- scale(cluster_data)
+
+```
+
+## Running the Kmeans model to generate a new data form grouped into clusters
+
+```{r kmeans, warning=FALSE, message=FALSE, fig.align = "center", fig.width = 10, fig.height = 6}
+
+library(stats)
+
+# Finding best k with an elbow plot
+wss <- numeric(10)
+
+for (i in 1:10){
+  wss[i] <- kmeans(scaled_cluster_data, centers = i, nstart = 25)$tot.withins
+}
+
+plot_data <- data.frame(k=1:10, wss = wss)
+
+p1 <- plot_data |> 
+  ggplot(aes(x = (k), y = wss))+
+  scale_x_continuous(breaks = unique(plot_data$k)) +
+  geom_line(linewidth = 1.5, color="#FFE0E0")+
+  gghighlight::gghighlight(plot_data$k==3)+
+  geom_point(size=3.5, color="#E06666", shape = 21, fill="white",stroke = 2)+
+  theme_classic()+
+  labs(title = "Elbow plot to find out k (number of clusters)", x = "Number of clusters (k)")+
+  theme(panel.background = element_blank(),
+        text = element_text(family = "Century Gothic", face = "bold"),
+        axis.text = element_text(size = 13))
+      
+print(p1)
+## From the elbow plot we get k = 3 , run final model
+
+set.seed(123)
+final_clusters <- kmeans(cluster_data, centers = 3, nstart = 25)
+
+## Add the clustered data to original dataset
+data$cluster <- as.factor(final_clusters$cluster)
+
+
+```
+
+Manipulating clusters 
+
+```{r cluster, warning=FALSE, message=FALSE}
+
+library(kableExtra)
+library(DT)
+
+
+cluster_identities_1 <- data |> 
+  group_by(cluster) |> 
+  summarise(
+    avg_step_freq = mean(Step.Frequency..steps.min.),
+    avg_stride = mean(Stride.Length..m.),
+    avg_joint = mean(Joint.Angle....)
+  )
+
+
+cluster_categorical_identity <- data |> 
+  group_by(cluster,EMG.Activity) |> 
+  summarise(count=n()) |> 
+  mutate(percent = count/sum(count)*100) |> 
+  mutate(EMG.Activity = case_when(
+    EMG.Activity == 1 ~ "Low",
+    EMG.Activity == 2 ~ "Moderate",
+    EMG.Activity == 3 ~ "High")) |> 
+  group_by(cluster,EMG.Activity) 
+
+cluster_identities_1 |> 
+  datatable()
+
+
+```
+
+
+Plot for Clusters
+
+```{r cluster_plot, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 10, fig.height = 6}
+
+
+
+cl_long <- cluster_identities_1 |> 
+  pivot_longer(-c(cluster),
+               names_to = "variables",
+               values_to = "value")
+  
+  
+p2 <- cl_long |>
+  ggplot(aes(x=cluster, y=value, fill=variables))+
+  geom_col(position = "dodge")+
+  scale_fill_manual(values = c("gray80","#27A0CC","gray80"),
+                    labels = c("avg_joint"="Joint Angle",
+                               "avg_step_freq"="Step Frequency (per min)",
+                               "avg_stride" = "Stride Length"))+
+  theme_classic()+
+  geom_text(aes(label = round(value,1), color = variables), position = position_dodge(width = 0.8), show.legend = FALSE,
+            vjust=-.5, family = "Century Gothic", fontface="bold")+
+  scale_color_manual(values = c("gray80","#27A0CC","gray80"))+
+  theme(
+    text = element_text(family = "Century Gothic", size = 12, face = "bold"),
+    axis.text.x = element_text(size = 13)
+  )+
+  labs(y="Average value")
+
+print(p2)
+
+
+```
+
+## Analysis of clusters
+
+Our ML model classified the individuals in our sample into 3 clusters based on their biomechanics, results from the clustering shows that individuals have similar stride lenght and overall joint angle, these two does not extensively separate the individuals, on the other hand the number of steps taken varies across these clusters. cluster 1 and average of 66 steps/min, cluster 2 avg 78 steps/min and cluster 3 92 steps/min. To further classify then we will look at the EMG activity level for each cluster
+
+```{r, warning=FALSE, message=FALSE}
+
+cluster_categorical_identity |> 
+  mutate(percent = paste0(round(percent,1),"%")) |> 
+  datatable()
+
+```
+
+Results from EMG Activity shows an interesting revelation, among all 3 clusters EMG Activity is scattered across all 3 classes, this tells us the way the patients walk (biomechanics) has no effect on them but rather how fast they walk. Based on this we will name them accrodingly - Cluster 1 (Avg 66 steps/min) : Slow walkers - Cluster 2 (Avg 78 steps/min) : Steady walkers - Cluster 3 (Avg 92 steps/min) : Fast walkers
+
+#### Analysis
+
+
+Quality of Life Scores across clusters
+
+```{r cluster_qol, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 10, fig.height = 6}
+
+## cluster vs Quality of life score
+
+plot1 <- data |>
+  group_by(cluster) |>
+  summarise(avg_score = mean(Quality.of.Life.Score)) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers",
+    )) |> 
+  ggplot(aes(x = cluster, y = avg_score, fill = cluster))+
+  geom_col(width = 0.9)+
+  geom_text(aes(label = round(avg_score,2)),
+            family="Century Gothic",fontface="bold", size = 5, vjust=-.5)+
+  scale_fill_manual(values = c("#382873", "#0168C8", "#00B050"))+
+  scale_y_continuous(limits = c(0,100), expand = c(0,0))+
+  labs(x=NULL, y="Average Quality of Life Score")+
+  theme(
+    panel.background = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(size = 15, family = "Century Gothic", face = "bold"),
+    axis.text.y = element_text(size = 10, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 10, family = "Century Gothic", face = "bold"),
+    axis.line.x = element_line(colour = "black", linewidth = .5),
+    axis.line.y = element_line(colour = "black", linewidth = .5),
+  )
+
+
+print(plot1)
+
+```
+
+
+
+Age Groupungs across clusters
+
+
+```{r age, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 10, fig.height = 6}
+
+# plot1
+
+age_bins <- data |>
+  mutate(Age_class = case_when(
+    Age %in% c(18:24) ~ "Youth",
+    Age %in% c(25:64) ~ "Working Age",
+    Age %in% c(65:100) ~ "Older Persons"
+  )) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers",
+    ))
+
+## overview of the sample in terms of age class
+age_class <- age_bins |>
+  group_by(cluster,Age_class) |>
+  count() |>
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100)
+
+p3 <- age_class |>
+  ggplot(aes(x = cluster, y = n, fill = Age_class)) +
+  geom_col(width = 0.8)+
+  theme_classic()+
+  geom_text(aes(label = paste0(scales::number(percent,accuracy=.1),"%")),
+            position = position_stack(vjust = 0.5),size=5,
+            family="Century Gothic", color="white", fontface="bold")+
+  scale_fill_manual(values = c("Youth"="#E69F00","Older Persons"="#A67C52", "Working Age"="#009E73"))+
+  theme(text = element_text(family = "Century Gothic", face = "bold", size = 12),
+        axis.text = element_text(size = 13))+
+  labs(fill=NULL, y = "Number of Patients", x=NULL) #title = "Distribution of Patients by Age Groups")
+
+
+print(p3)
+
+```
+
+
+Patient satisfaction scores across clusters
+
+```{r p_satisfied,message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+## Patient satisfaction score by cluster
+
+
+plot2 <- data |>
+  group_by(cluster) |>
+  summarise(avg_score = mean(Patient.Satisfaction..1.10.)) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers",
+    )) |> 
+  ggplot(aes(x = cluster, y = avg_score, fill = cluster))+
+  geom_col(width = 0.9)+
+  geom_text(aes(label = round(avg_score,2)),
+            family="Century Gothic",fontface="bold", size = 7, vjust=-.5)+
+  scale_fill_manual(values = c("#382873", "#0168C8", "#00B050"))+
+  scale_y_continuous(limits = c(0,10), expand = c(0,0))+
+  labs(x=NULL, y="Average Satisfaction Score")+
+  theme(
+    panel.background = element_blank(),
+    legend.position = "none",
+    axis.text.x = element_text(size = 18, family = "Century Gothic", face = "bold"),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.line.x = element_line(colour = "black", linewidth = .5),
+    axis.line.y = element_line(colour = "black", linewidth = .5),
+  )
+
+print(plot2)
+
+```
+
+
+Frequency of visit to Healthcare facilities
+
+```{r visit_frequency, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+## visit freqiency by cluster plot
+v_f <- data |> 
+  group_by(cluster, Visit.Frequency) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"),
+    Visit.Frequency = factor(Visit.Frequency, levels = c("Weekly","Monthly","Yearly"))
+    )
+
+plot3 <- v_f |> 
+  ggplot(aes(x = cluster, y = percent, fill = Visit.Frequency))+
+  geom_col(width = 0.9)+
+  geom_vline(xintercept = c(0.5,1.5,2.5,3.5), linewidth=.3, color="gray")+
+  geom_text(aes(label = round(percent,1)), position = position_stack(vjust = .5),
+          family="Century Gothic",fontface="bold", size = 5, vjust=-.5, color="white")+
+  scale_fill_manual(values = c("#14607A","#07BB9E","#F98B00")) +
+  theme(text = element_text(family = "Century Gothic", face = "bold"),
+    panel.background = element_blank(),
+    legend.position = "right",
+    axis.text.x = element_text(size = 13, family = "Century Gothic", face = "bold", vjust = 6),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold")
+    # axis.line.x = element_line(colour = "black", linewidth = .5),
+    # axis.line.y = element_line(colour = "black", linewidth = .5),
+  )+
+  labs(x=NULL)
+  #coord_flip(clip = "off")
+print(plot3)
+
+```
+
+
+Socioeconomic Status across clusters
+
+
+```{r ses, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+
+## Socio economic status by cluster
+ses <- data |> 
+  group_by(cluster, SES) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"),
+    SES = factor(SES, levels = c(1,2,3,4))
+    )
+
+plot3 <- ses |> 
+  ggplot(aes(x = cluster, y = percent, fill = SES))+
+  geom_col(width = 0.9)+
+  geom_vline(xintercept = c(0.5,1.5,2.5,3.5), linewidth=.3, color="gray")+
+  geom_text(aes(label = paste0(round(percent,1),"%")), position = position_stack(vjust = .5),
+          family="Century Gothic",fontface="bold", size = 5, vjust=-.5, color="white")+
+  scale_fill_manual(values = c("#210D69", "#DB2E76", "#586889", "#227C42")) +
+  theme(text = element_text(family = "Century Gothic", face = "bold"),
+    panel.background = element_blank(),
+    legend.position = "right",
+    axis.text.x = element_text(size = 13, family = "Century Gothic", face = "bold", vjust = 6),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold")
+    # axis.line.x = element_line(colour = "black", linewidth = .5),
+    # axis.line.y = element_line(colour = "black", linewidth = .5),
+  )+
+  labs(x=NULL)
+  #coord_flip(clip = "off")
+
+
+```
+
+
+Service type by Cluster
+
+
+```{r service, message=FALSE,warning=FALSE, message=FALSE, fig.align = "center", fig.width = 9, fig.height = 7}
+
+## service type by clusters
+
+service <- data |> 
+  group_by(cluster, Service.Type) |> 
+  count() |> 
+  ungroup() |> 
+  group_by(cluster) |> 
+  mutate(percent = n/sum(n)*100) |> 
+  mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"),
+    #SES = factor(SES, levels = c(1,2,3,4))
+    )
+
+plot4 <- service |> 
+  ggplot(aes(x = cluster, y = percent, fill =Service.Type))+
+  geom_col(width = 0.9)+
+  geom_vline(xintercept = c(0.5,1.5,2.5,3.5), linewidth=.3, color="gray")+
+  geom_text(aes(label = paste0(round(percent,1),"%")), position = position_stack(vjust = .5),
+          family="Century Gothic",fontface="bold", size = 5, color="white")+
+  scale_fill_manual(values = c("#800201","#febf02","#05205f")) +
+  theme(text = element_text(family = "Century Gothic", face = "bold", colour = "black"),
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    #plot.background = element_rect(fill = "black"), 
+    plot.background = element_blank(),
+    legend.position = "right",
+    legend.background = element_blank(),
+    axis.text.x = element_text(size = 13, family = "Century Gothic", face = "bold", vjust = 6, colour = "black"),
+    axis.text.y = element_text(size = 12, family = "Century Gothic", face = "bold", colour = "black"),
+    axis.title = element_text(size = 12, family = "Century Gothic", face = "bold")
+    # axis.line.x = element_line(colour = "black", linewidth = .5),
+    # axis.line.y = element_line(colour = "black", linewidth = .5),
+  )+
+  labs(x=NULL)+
+  coord_flip(clip = "off")
+
+#ggsave("service.png",plot4, width = 10,height = 6, dpi = 300, device = grDevices::png)
+
+print(plot4)
+
+```
+
+## EMG Activity level for each cluster
+
+```{r}
+emg <- cluster_categorical_identity |> 
+   mutate(cluster = case_when(
+    cluster ==  1 ~ "Slow Walkers",
+    cluster ==  2 ~ "Steady Walkers",
+    cluster ==  3 ~ "Fast Walkers"))
+
+emg$percent <- as.numeric(emg$percent)
+
+plot5 <- ggplot(emg, aes(x = factor(cluster), y = factor(EMG.Activity), fill = percent)) +
+  geom_tile(color = "white", width = 0.95, height = 0.95) +
+  scale_fill_gradientn(colours = rev(neutral_color_scheme)) +
+  geom_text(aes(label = paste0(round(percent,1),"%"),family = "Century Gothic", fontface = "bold",
+                color = ifelse((EMG.Activity == "Low" & cluster == "Slow Walkers") | (cluster == "Steady Walkers" & EMG.Activity == "Moderate"),"black","white")), show.legend = F)+
+  scale_color_manual(values = c("white","black"))+
+  theme_minimal() +
+  theme(text = element_text(family = "Century Gothic", face = "bold"))+
+  labs(x = "Cluster", y = "EMG Activity", fill = "Percent")
+
+
+print(plot5)
+
+```
+
+
+
+# 📈 Key Findings
+
+## Model Performance
+
+| Model             | RMSE  | MAE   | R²    |
+|-------------------|-------|-------|-------|
+| Linear Regression | 13.45 | 10.82 | 0.342 |
+| Random Forest     | 11.23 | 8.97  | 0.489 |
+
+**Random Forest outperforms Linear Regression** across all metrics, capturing non-linear relationships and interactions between predictors.
+
+## Top Predictors of Quality of Life - Random Forest Model
+
+1.  **Patient Satisfaction** (most important)
+2.  **Service Type**
+3.  **Visit Frequency**
+4.  **EMG Activity Level**
+5.  **Age**
+
+**Finding 1 (Prediction)**: Patient Satisfaction and Service Type are the most important predictors of Quality of Life.
+
+**Finding 2 (Clustering)**: We found 3 patient profiles: "Slow," "Steady," and "Fast Walkers."
+
+**Finding 3 (The "Frustration Gap")**: The "Steady Walkers" (Cluster 2) are the least satisfied patient group.
+
+**Finding 4 (The "Rehab Gap")**: This "frustrated" group also receives the least "Rehab" (26.7%), while the most satisfied group (Cluster 3) receives the most (37.1%).
+
+**Finding 5 (The Solution)**: The "one-size-fits-all" rehab model is failing. Our EMG plot shows a clear triage solution: **"Slow Walkers"** (40% "Low EMG") need Strength Training, **"Steady Walkers"** ("Mod/High EMG") need Physical Therapy for pain/balance.
+
+
+
+
+
+
+
