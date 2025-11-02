@@ -113,10 +113,6 @@ install.packages(c(
   "knitr",
   "kableExtra",
   "corrplot",
-  "psych",
-  "car",
-  "viridis",
-  "patchwork"
 ))
 ```
 
