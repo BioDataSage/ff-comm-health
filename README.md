@@ -204,7 +204,7 @@ If you use this dataset or code in your research, please cite:
 
 ``` bibtex
 @dataset{community_health_2025,
-  author       = {[Community Health Evaluation Team]},
+  author       = {[Fair Forward Community Health Team]},
   title        = {Community Health Evaluation: Predictive Analytics Dataset},
   year         = {2025},
   publisher    = {Zenodo},
