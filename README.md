@@ -235,8 +235,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## 📚 References
 
-1.  [Add relevant literature on community health evaluation]
-2.  [Machine learning in healthcare references]
-3.  [Quality of life assessment frameworks]
+1.  Wickham H, Averick M, Bryan J, Chang W, McGowan LD, François R, Grolemund G, Hayes A, Henry L, Hester J, Kuhn M, Pedersen TL, Miller E, Bache SM, Müller K, Ooms J, Robinson D, Seidel DP, Spinu V, Takahashi K, Vaughan D, Wilke C, Woo K, Yutani H (2019). “Welcome to the tidyverse.” Journal of Open Source Software, 4(43), 1686. doi:10.21105/joss.01686.
+2.  Posit Team (2025). RStudio: Integrated Development Environment for R. Posit Software, PBC. http://www.posit.co/.
 
 ------------------------------------------------------------------------
