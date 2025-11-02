@@ -4,7 +4,7 @@ format: revealjs
 editor: visual
 ---
 
-## what my coding is doing 
+## what my coding is doing
 
 ```{r}
 
