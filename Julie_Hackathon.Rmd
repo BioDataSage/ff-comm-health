@@ -1,0 +1,133 @@
+---
+title: "Julie_Hackathon"
+output: html_document
+date: '`r Sys.Date()`'
+---
+
+```{r setup, include=FALSE}
+
+# Reopen RStudio and run if download errors
+#unlink("C:/Users/julie/AppData/Local/R/win-library/4.4/00LOCK", recursive = TRUE, force = TRUE)
+#unlink("C:/Users/julie/AppData/Local/R/win-library/4.4/00LOCK-randomForest", recursive = TRUE, force = TRUE)
+
+#install.packages("caret", dependencies = TRUE)
+#install.packages('DataExplorer')
+#install.packages('randomForest')
+
+library(catboost)
+library(DataExplorer)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+library(caret)
+```
+
+
+```{r cars}
+path = "C:/Users/julie/R_Fair_Forward_Hackathon/community_health_evaluation_dataset.csv"
+print(file.exists(path))
+df = read.csv(path)
+head(df)
+```
+
+
+```{r pressure, echo=FALSE}
+summary(df)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+str(df)
+colnames(df)
+```
+
+
+```{r}
+#Random Forest model with Patient Satisfaction is target
+
+df1 <- df
+
+#convert chr features to factor
+df$Gender <- factor(df1$Gender)
+df$Service.Type <- factor(df1$Service.Type)
+df$Visit.Frequency <- factor(df1$Visit.Frequency, levels = c('Yearly', 'Monthly', 'Weekly'))
+df$EMG.Activity <- factor(df1$EMG.Activity, levels=c('Low', 'Moderate', 'High'))
+
+#convert numeric target from to factor
+df1$Patient.Satisfaction <- factor(df1$Patient.Satisfaction..1.10.)
+
+# Split
+set.seed(42)
+train_idx <- sample(1:nrow(df1), 0.8*nrow(df1))  # 80% of 347
+trainData <- df1[train_idx, -c(1,11)]       # remove Participant.ID   col and Patient.Satisfaction..1.10.
+testData <- df1[-train_idx, -c(1,11)]
+
+#print(colnames(trainData))
+
+# Train
+model <- randomForest(Patient.Satisfaction ~ ., data = trainData)
+print(model)
+
+# Test
+pred <- predict(model, testData)
+y_label <- testData$Patient.Satisfaction
+confusionMatrix(pred, y_label)
+
+```
+```{r}
+# Importance
+importance(model)
+varImpPlot(model)
+```
+
+```{r}
+#Random forest, try #try  Quality.of.Life.Score as target instead of Patient.Satisfaction
+
+df2 <- df
+
+#convert chr features to factor
+df2$Gender <- factor(df2$Gender)
+df2$Service.Type <- factor(df2$Service.Type)
+df2$Visit.Frequency <- factor(df2$Visit.Frequency, levels = c('Yearly', 'Monthly', 'Weekly'))
+df2$EMG.Activity <- factor(df2$EMG.Activity, levels=c('Low', 'Moderate', 'High'))
+
+
+# Split
+set.seed(42)
+train_idx <- sample(1:nrow(df2), 0.8*nrow(df2))  # 80% of 347
+trainData <- df2[train_idx, -c(1)]       # remove Participant.ID   col 
+testData <- df2[-train_idx, -c(1)]
+
+print(colnames(trainData))
+
+# Train
+model2 <- randomForest(Quality.of.Life.Score ~ ., data = trainData)
+print(model2)
+df2$Gender <- factor(df2$Gender)
+df2$Service.Type <- factor(df2$Service.Type)
+df2$Visit.Frequency <- factor(df2$Visit.Frequency, levels = c('Yearly', 'Monthly', 'Weekly'))
+df2$EMG.Activity <- factor(df2$EMG.Activity, levels=c('Low', 'Moderate', 'High'))
+
+
+# Split
+set.seed(42)
+train_idx <- sample(1:nrow(df2), 0.8*nrow(df2))  # 80% of 347
+trainData <- df2[train_idx, -c(1)]       # remove Participant.ID   col 
+testData <- df2[-train_idx, -c(1)]
+
+print(colnames(trainData))
+
+# Train
+model2 <- randomForest(Quality.of.Life.Score ~ ., data = trainData)
+print(model2)
+```
+```{r}
+#automated EDA with DataExplorer
+# Convert all character columns to factors
+df[] <- lapply(df, function(x) if (is.character(x)) as.factor(x) else x)
+
+
+create_report(df)
+
+```
+
