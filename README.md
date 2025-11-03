@@ -6,6 +6,8 @@ This repository presents a dual-analysis of community health outcomes, moving be
 
 The result is a complete, data-driven story that moves from "What" is happening (Prediction) to "Why" it's happening and "How" to fix it (Explanation).
 
+View the analysis report here: <https://biodatasage.github.io/ff-comm-health/>
+
 ## 🎯 Objectives
 
 -   **Predict Quality of Life scores** using patient demographics, biomechanical measures, and service utilization patterns
@@ -233,7 +235,8 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## 📧 Contact
 
--   **Authors:** "[Derrick Nyarko](https://github.com/nyarderr), [Daniel Adediran](https://github.com/dexwel), [Alejandra Ramirez](https://github.com/Alejandra1599), [Julie Cha](https://github.com/jcha-hub), [Jiro Claveria](https://github.com/aljon-claveria), and [Kass Fernandez](https://github.com/KassSTEM)
+-   **Authors:** [Derrick Nyarko](https://github.com/nyarderr), [Daniel Adediran](https://github.com/dexwel), [Alejandra Ramirez](https://github.com/Alejandra1599), [Julie Cha](https://github.com/jcha-hub), [Jiro Claveria](https://github.com/aljon-claveria), and [Kass Fernandez](https://github.com/KassSTEM)
 -   **Project Repository:** <https://github.com/BioDataSage/ff-comm-health>
+-   **Analysis Report:** <https://biodatasage.github.io/ff-comm-health/>
 
 ------------------------------------------------------------------------
