@@ -233,7 +233,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## 📧 Contact
 
--   **Authors:** "[Derrick Nyarko](github.com/nyarderr), [Daniel Adediran](github.com/dexwel), [Alejandra Ramirez](github.com/Alejandra1599),[Julie Cha](github.com/jcha-hub), [Jiro Claveria](github.com/aljon-claveria)
--   **Project Link:** <https://github.com/BioDataSage/ff-comm-health>
+-   **Authors:** "[Derrick Nyarko](https://github.com/nyarderr), [Daniel Adediran](https://github.com/dexwel), [Alejandra Ramirez](https://github.com/Alejandra1599), [Julie Cha](https://github.com/jcha-hub), [Jiro Claveria](https://github.com/aljon-claveria), and [Kass Fernandez](https://github.com/KassSTEM)
+-   **Project Repository:** <https://github.com/BioDataSage/ff-comm-health>
 
 ------------------------------------------------------------------------
