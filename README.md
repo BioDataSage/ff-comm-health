@@ -102,9 +102,8 @@ install.packages(c(
 
 ``` r
 # This script builds the Random Forest model and finds the key QoL predictors.
-source("01_analysis_scripts/01_predictive_analysis.R")
+source("scripts/predictive_analysis.qmd")
 
-### Running the Interactive Dashboard
 ```
 
 2.  Run the Clustering Analysis (Part 2):
@@ -112,7 +111,7 @@ source("01_analysis_scripts/01_predictive_analysis.R")
 ``` r
 # This script runs the k-Means clustering, finds the "Frustration Gap,"
 # and identifies the "Rehab Gap."
-source("01_analysis_scripts/02_clustering_analysis.R")
+source("scripts/clustering_analysis.rmd")
 ```
 
 3.  Launching our Dashboard
@@ -128,7 +127,7 @@ The dashboard provides: - **Real-time QoL predictions** based on patient paramet
 
 ``` r
 # Render the Quarto presentation
-quarto::quarto_render("analysis.qmd")
+render("presentations/report.rmd")
 ```
 
 ## 📈 Key Findings
